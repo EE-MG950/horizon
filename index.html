@@ -1,0 +1,238 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+    <title>Earth Visibility: Global & Micro Scale</title>
+    <script src="http://www.webglearth.com/v2/api.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        html, body { padding: 0; margin: 0; background-color: #f0f2f5; font-family: 'Segoe UI', Tahoma, sans-serif; }
+        
+        /* Контейнер для глобуса */
+        #earth_wrapper { position: relative; width: 100%; height: 70vh; background: #000; overflow: hidden; }
+        #earth_div { width: 100%; height: 100%; position: absolute !important; }
+        
+        /* Панель управления */
+        #ui-panel {
+            position: absolute; top: 20px; left: 20px; z-index: 100;
+            background: rgba(255, 255, 255, 0.9); padding: 20px;
+            border-radius: 12px; width: 320px; max-height: 80%; overflow-y: auto;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3); backdrop-filter: blur(5px);
+        }
+
+        /* Стили графиков */
+        .charts-container { display: flex; flex-direction: column; align-items: center; padding: 40px 20px; gap: 40px; }
+        .card { background: white; width: 100%; max-width: 1000px; padding: 30px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); box-sizing: border-box; }
+        h2 { color: #263238; margin-top: 0; }
+        .info { color: #546e7a; font-size: 0.95em; margin-bottom: 20px; border-left: 4px solid #3498db; padding-left: 15px; }
+
+        /* Элементы управления в карточках */
+        .area-card { border: 1px solid #ddd; padding: 12px; margin-top: 15px; border-radius: 8px; background: #fff; position: relative; border-left: 6px solid; }
+        .control-group { margin-bottom: 8px; }
+        label { font-size: 11px; font-weight: bold; color: #666; display: block; text-transform: uppercase; }
+        input { width: 100%; box-sizing: border-box; padding: 6px; border: 1px solid #ccc; border-radius: 4px; }
+        .stats-box { background: #2c3e50; padding: 10px; border-radius: 4px; margin-top: 10px; font-size: 13px; color: #fff; font-family: monospace; }
+        .add-btn { width: 100%; padding: 12px; background: #27ae60; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        .layer-switch { margin-bottom: 15px; display: flex; gap: 5px; }
+        .layer-btn { flex: 1; padding: 8px; font-size: 12px; cursor: pointer; border: 1px solid #ccc; background: #fff; border-radius: 4px; }
+        .layer-btn.active { background: #3498db; color: white; border-color: #2980b9; }
+        .remove-btn { position: absolute; top: 10px; right: 10px; background: #e74c3c; color: white; border: none; border-radius: 3px; padding: 2px 6px; cursor: pointer; }
+    </style>
+</head>
+<body onload="initialize()">
+
+    <div id="earth_wrapper">
+        <div id="earth_div"></div>
+        <div id="ui-panel">
+            <h3 style="margin:0 0 15px 0;">Обзор Земли 3D</h3>
+            <div class="layer-switch">
+                <button id="btn-osm" class="layer-btn active" onclick="setLayer('osm')">Схема</button>
+                <button id="btn-sat" class="layer-btn" onclick="setLayer('sat')">Спутник</button>
+            </div>
+            <button class="add-btn" onclick="addArea()">+ Добавить область</button>
+            <div id="areas-list"></div>
+        </div>
+    </div>
+
+    <div class="charts-container">
+        
+        <div class="card">
+            <h2>Сколько процентов Земли видно с высоты?</h2>
+            <div class="info">
+                На графике видно, что даже на высоте 35,786 км (геостационарная орбита) 
+                наблюдатель видит лишь около 42.4% поверхности. Лимит в 50% недостижим физически.
+            </div>
+            <canvas id="wideChart"></canvas>
+        </div>
+
+        <div class="card">
+            <h2>Микро-масштаб: первые 100 сантиметров</h2>
+            <div class="info">
+                Зависимость расстояния до горизонта от высоты подъема (в метрах). 
+                Даже подняв глаза на 1 метр от земли, вы отодвигаете горизонт более чем на 3.5 километра.
+            </div>
+            <canvas id="microChart"></canvas>
+        </div>
+
+    </div>
+
+    <script>
+        let earth, currentLayer;
+        let areas = [];
+        const R = 6371000; // Радиус Земли в метрах
+
+        // --- Инициализация глобуса ---
+        function initialize() {
+            earth = new WE.map('earth_div', { center: [45, 35], zoom: 2.5, atmosphere: true, sky: true });
+            setLayer('osm');
+            earth.on('click', function(e) {
+                if (areas.length > 0) {
+                    const idx = areas.length - 1;
+                    areas[idx].lat = e.latlng.lat;
+                    areas[idx].lng = e.latlng.lng;
+                    renderList();
+                    drawArea(idx);
+                }
+            });
+            addArea();
+            initCharts();
+        }
+
+        function setLayer(type) {
+            if (currentLayer) currentLayer.removeFrom(earth);
+            let url = (type === 'sat') 
+                ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+                : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+            document.getElementById('btn-sat').className = type === 'sat' ? 'layer-btn active' : 'layer-btn';
+            document.getElementById('btn-osm').className = type === 'osm' ? 'layer-btn active' : 'layer-btn';
+            currentLayer = WE.tileLayer(url).addTo(earth);
+        }
+
+        function addArea() {
+            areas.push({ lat: 45, lng: 35, alt: 500000, color: '#e67e22', opacity: 0.5, polygon: null });
+            renderList();
+            drawArea(areas.length - 1);
+        }
+
+        function drawArea(index) {
+            const area = areas[index];
+            if (area.polygon) area.polygon.destroy();
+            const h = Math.max(0.1, parseFloat(area.alt));
+            let theta = Math.acos(R / (R + h)); 
+            if (theta > 1.52) theta = 1.52; 
+
+            const points = [];
+            const segments = 100;
+            for (let i = 0; i <= segments; i++) {
+                const p = getDest(area.lat, area.lng, theta, (i * 360) / segments);
+                points.push([p.lat, p.lng]);
+            }
+            area.polygon = WE.polygon(points, { color: area.color, opacity: area.opacity, fillColor: area.color, fillOpacity: area.opacity }).addTo(earth);
+            updateStatsDisplay(index, h, theta);
+        }
+
+        function updateField(index, field, value) {
+            areas[index][field] = (field === 'color') ? value : parseFloat(value);
+            drawArea(index);
+        }
+
+        function updateStatsDisplay(index, h, theta) {
+            const s = 2 * Math.PI * Math.pow(R, 2) * (h / (R + h));
+            const km2 = (s / 1000000).toLocaleString(undefined, {maximumFractionDigits: 0});
+            const distMeters = R * theta;
+            const distFormatted = distMeters > 10000 
+                ? (distMeters / 1000).toLocaleString(undefined, {maximumFractionDigits: 1}) + " км"
+                : distMeters.toLocaleString(undefined, {maximumFractionDigits: 1}) + " м";
+
+            const el = document.getElementById(`stat-${index}`);
+            if(el) el.innerHTML = `S ≈ ${km2} км²<br>До края: ${distFormatted}`;
+        }
+
+        function getDest(lat, lng, distRad, brngDeg) {
+            const la1 = lat * Math.PI / 180, lo1 = lng * Math.PI / 180, br = brngDeg * Math.PI / 180;
+            const la2 = Math.asin(Math.sin(la1) * Math.cos(distRad) + Math.cos(la1) * Math.sin(distRad) * Math.cos(br));
+            const lo2 = lo1 + Math.atan2(Math.sin(br) * Math.sin(distRad) * Math.cos(la1), Math.cos(distRad) - Math.sin(la1) * Math.sin(la2));
+            return { lat: la2 * 180 / Math.PI, lng: lo2 * 180 / Math.PI };
+        }
+
+        function removeArea(index) {
+            if (areas[index].polygon) areas[index].polygon.destroy();
+            areas.splice(index, 1);
+            renderList();
+        }
+
+        function renderList() {
+            const container = document.getElementById('areas-list');
+            container.innerHTML = '';
+            areas.forEach((area, i) => {
+                const card = document.createElement('div');
+                card.className = 'area-card';
+                card.style.borderColor = area.color;
+                card.innerHTML = `
+                    <button class="remove-btn" onclick="removeArea(${i})">✕</button>
+                    <div class="control-group"><label>Высота (м)</label><input type="number" step="0.1" value="${area.alt}" oninput="updateField(${i}, 'alt', this.value)"></div>
+                    <div style="display:flex; gap:5px;"><input style="flex:1" type="number" step="0.01" value="${area.lat.toFixed(2)}" oninput="updateField(${i}, 'lat', this.value)"><input style="flex:1" type="number" step="0.01" value="${area.lng.toFixed(2)}" oninput="updateField(${i}, 'lng', this.value)"></div>
+                    <div style="display:flex; gap:10px; margin-top:10px; align-items:center;">
+                        <input type="color" value="${area.color}" style="width:45px; height:32px; padding:2px; border:none;" oninput="updateField(${i}, 'color', this.value)">
+                        <input type="range" min="0.1" max="1" step="0.1" value="${area.opacity}" oninput="updateField(${i}, 'opacity', this.value)">
+                    </div>
+                    <div class="stats-box" id="stat-${i}"></div>
+                `;
+                container.appendChild(card);
+                drawArea(i);
+            });
+        }
+
+        // --- ГРАФИКИ ---
+        function initCharts() {
+            // 1. График до 40,000 км
+            const R_KM = 6371;
+            const widePoints = [];
+            for (let h = 0; h <= 40000; h += 500) {
+                let percent = (h / (2 * (R_KM + h))) * 100;
+                widePoints.push({ x: h, y: percent.toFixed(2) });
+            }
+
+            new Chart(document.getElementById('wideChart'), {
+                type: 'line',
+                data: { datasets: [{ label: 'Видно % поверхности', data: widePoints, borderColor: '#2980b9', fill: true, pointRadius: 0 }] },
+                options: { 
+                    scales: { 
+                        x: { type: 'linear', title: { display: true, text: 'Высота (км)' } },
+                        y: { min: 0, max: 50, ticks: { callback: v => v + '%' } } 
+                    } 
+                }
+            });
+
+            // 2. График до 100 см (0.01м - 1м)
+            const microPoints = [];
+            for (let h_cm = 0; h_cm <= 100; h_cm += 1) {
+                let h_m = h_cm / 100;
+                // Формула расстояния до горизонта (дуга): R * arccos(R/(R+h))
+                let theta = Math.acos(R / (R + h_m));
+                let dist = R * theta;
+                microPoints.push({ x: h_cm, y: dist.toFixed(1) });
+            }
+
+            new Chart(document.getElementById('microChart'), {
+                type: 'line',
+                data: {
+                    datasets: [{
+                        label: 'Расстояние до края (метры)',
+                        data: microPoints,
+                        borderColor: '#e67e22',
+                        backgroundColor: 'rgba(230, 126, 34, 0.1)',
+                        fill: true,
+                        pointRadius: 4
+                    }]
+                },
+                options: {
+                    scales: {
+                        x: { type: 'linear', title: { display: true, text: 'Высота (сантиметры)' } },
+                        y: { title: { display: true, text: 'Расстояние до края (м)' } }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
