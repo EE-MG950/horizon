@@ -94,21 +94,45 @@
         let currentLang = 'ru';
 
         const i18n = {
-            ru: {
-                title: "Управление зонами", add: "+ Добавить область", geo: "Экстремальная геометрия",
-                chart: "Микро-масштаб: первые 100 сантиметров", h: "Высота (м)", l_dist: "Дистанция (R)",
-                l_arc: "Дуга (%)", l_angle: "Угол", s_dist: "До края", s_earth: "Земли",
-                btn_osm: "Схема", btn_sat: "Спутник", chart_lbl: "Дальность горизонта (м)",
-                lat: "Широта", lng: "Долгота"
-            },
-            en: {
-                title: "Zone Management", add: "+ Add Area", geo: "Extreme Geometry",
-                chart: "Micro-scale: first 100 cm", h: "Height (m)", l_dist: "Distance (R)",
-                l_arc: "Arc (%)", l_angle: "Angle", s_dist: "To edge", s_earth: "of Earth",
-                btn_osm: "Map", btn_sat: "Satellite", chart_lbl: "Horizon Distance (m)",
-                lat: "Latitude", lng: "Longitude"
-            }
-        };
+    ru: {
+        title: "Управление зонами", 
+        add: "+ Добавить область", 
+        geo: "Двигайте голубую точку мышкой",
+        chart: "Отдаление горизонта при подъёме наблюдателя", // Изменено
+        h: "Высота (м)", 
+        l_dist: "Дистанция (R)",
+        l_arc: "Дуга (%)", 
+        l_angle: "Угол", 
+        s_dist: "До края", 
+        s_earth: "Земли",
+        btn_osm: "Схема", 
+        btn_sat: "Спутник", 
+        chart_lbl: "Дальность горизонта (м)",
+        lat: "Широта", 
+        lng: "Долгота",
+        axis_x: "Высота (см)", // Добавлено
+        axis_y: "До края (м)"  // Добавлено
+    },
+    en: {
+        title: "Zone Management", 
+        add: "+ Add Area", 
+        geo: "Move the blue dot with your mouse",
+        chart: "Horizon distance vs observer height", // Изменено
+        h: "Height (m)", 
+        l_dist: "Distance (R)",
+        l_arc: "Arc (%)", 
+        l_angle: "Angle", 
+        s_dist: "To edge", 
+        s_earth: "of Earth",
+        btn_osm: "Map", 
+        btn_sat: "Satellite", 
+        chart_lbl: "Horizon Distance (m)",
+        lat: "Latitude", 
+        lng: "Longitude",
+        axis_x: "Height (cm)", // Добавлено
+        axis_y: "To edge (m)"   // Добавлено
+    }
+};
 
         function toggleLang() {
             currentLang = currentLang === 'ru' ? 'en' : 'ru';
@@ -117,22 +141,26 @@
         }
 
         function updateUI() {
-            const t = i18n[currentLang];
-            document.getElementById('txt-title').innerText = t.title;
-            document.getElementById('txt-add').innerText = t.add;
-            document.getElementById('txt-geo-title').innerText = t.geo;
-            document.getElementById('txt-chart-title').innerText = t.chart;
-            document.getElementById('lbl-dist').innerText = t.l_dist;
-            document.getElementById('lbl-arc').innerText = t.l_arc;
-            document.getElementById('lbl-angle').innerText = t.l_angle;
-            document.getElementById('btn-osm').innerText = t.btn_osm;
-            document.getElementById('btn-sat').innerText = t.btn_sat;
-            renderList();
-            if (microChart) {
-                microChart.data.datasets[0].label = t.chart_lbl;
-                microChart.update();
-            }
-        }
+    const t = i18n[currentLang];
+    document.getElementById('txt-title').innerText = t.title;
+    document.getElementById('txt-add').innerText = t.add;
+    document.getElementById('txt-geo-title').innerText = t.geo;
+    document.getElementById('txt-chart-title').innerText = t.chart; // Обновит заголовок
+    document.getElementById('lbl-dist').innerText = t.l_dist;
+    document.getElementById('lbl-arc').innerText = t.l_arc;
+    document.getElementById('lbl-angle').innerText = t.l_angle;
+    document.getElementById('btn-osm').innerText = t.btn_osm;
+    document.getElementById('btn-sat').innerText = t.btn_sat;
+    renderList();
+    
+    if (microChart) {
+        microChart.data.datasets[0].label = t.chart_lbl;
+        // Обновляем названия осей
+        microChart.options.scales.x.title.text = t.axis_x;
+        microChart.options.scales.y.title.text = t.axis_y;
+        microChart.update();
+    }
+}
 
         function initialize() {
             earth = new WE.map('earth_div', { center: [45, 35], zoom: 2.5, atmosphere: true, sky: true });
@@ -242,18 +270,43 @@
         }
 
         function initMicroChart() {
-            const points = [];
-            for (let h_cm = 0; h_cm <= 100; h_cm += 1) {
-                let h_m = h_cm / 100;
-                let theta = Math.acos(R / (R + h_m));
-                points.push({ x: h_cm, y: (R * theta).toFixed(1) });
-            }
-            microChart = new Chart(document.getElementById('microChart'), {
-                type: 'line',
-                data: { datasets: [{ label: i18n[currentLang].chart_lbl, data: points, borderColor: '#e67e22', backgroundColor: 'rgba(230, 126, 34, 0.1)', fill: true, pointRadius: 2 }] },
-                options: { scales: { x: { type: 'linear', ticks: {color: '#888'} }, y: { ticks: {color: '#888'} } }, plugins: { legend: { labels: { color: '#e0e0e0' } } } }
-            });
+    const points = [];
+    for (let h_cm = 0; h_cm <= 100; h_cm += 1) {
+        let h_m = h_cm / 100;
+        let theta = Math.acos(R / (R + h_m));
+        points.push({ x: h_cm, y: (R * theta).toFixed(1) });
+    }
+    const t = i18n[currentLang];
+    microChart = new Chart(document.getElementById('microChart'), {
+        type: 'line',
+        data: { 
+            datasets: [{ 
+                label: t.chart_lbl, 
+                data: points, 
+                borderColor: '#e67e22', 
+                backgroundColor: 'rgba(230, 126, 34, 0.1)', 
+                fill: true, 
+                pointRadius: 2 
+            }] 
+        },
+        options: { 
+            scales: { 
+                x: { 
+                    type: 'linear', 
+                    ticks: { color: '#888' },
+                    title: { display: true, text: t.axis_x, color: '#aaa' } // Подпись снизу
+                }, 
+                y: { 
+                    ticks: { color: '#888' },
+                    title: { display: true, text: t.axis_y, color: '#aaa' } // Подпись слева
+                } 
+            }, 
+            plugins: { 
+                legend: { labels: { color: '#e0e0e0' } } 
+            } 
         }
+    });
+}
 
         function initExtremeGeo() {
             const svg = document.getElementById('scene');
